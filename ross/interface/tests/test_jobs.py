@@ -13,9 +13,12 @@ import sys
 import threading
 import time
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from ross.interface.services.worker import jobs as jobs_module  # noqa: E402
 from ross.interface.services.worker.jobs import (  # noqa: E402
     CANCELLED,
     DONE,
@@ -256,6 +259,25 @@ def test_the_report_counts_the_waiting_for_whoever_shows_it():
         "a job cannot have been running for longer than it has existed"
     )
     latch.set()
+
+
+def test_the_report_reads_the_clock_once_for_both_numbers(monkeypatch):
+    """`waiting` and `running` share one reading of the clock.
+
+    With two readings, a running job whose start came right after its submit
+    could report a `running` longer than its `waiting` (#1512). A clock that
+    moves on every read makes that happen every time instead of now and then.
+    """
+    readings = iter([10.0, 10.001, 10.002, 10.003])
+    monkeypatch.setattr(jobs_module.time, "time", lambda: next(readings))
+    job = Job(1, {"kind": "analysis"}, None)  # submitted at 10.0
+    job.status = RUNNING
+    job.started = 10.0  # started the moment it was submitted
+    report = job.report()
+    # Both measured at 10.001. Two reads gave waiting 0.001 and running 0.002.
+    assert report["waiting"] == pytest.approx(0.001)
+    assert report["running"] == pytest.approx(0.001)
+    assert report["waiting"] >= report["running"]
 
 
 # --- what only the line can say (slice 6c-2) ---------------------------------

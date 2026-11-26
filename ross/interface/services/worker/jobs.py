@@ -95,9 +95,17 @@ class Job(object):
         return (self.finished or time.time()) - self.submitted
 
     def report(self):
-        report = {"job_id": self.id, "state": self.status, "waiting": self.waiting}
+        # One reading of the clock for both numbers. Reading it twice let
+        # `running` come out a few microseconds longer than `waiting` whenever
+        # the gap between the two reads beat the gap between submit and start.
+        now = self.finished or time.time()
+        report = {
+            "job_id": self.id,
+            "state": self.status,
+            "waiting": now - self.submitted,
+        }
         if self.status == RUNNING and self.started is not None:
-            report["running"] = (self.finished or time.time()) - self.started
+            report["running"] = now - self.started
         return report
 
 
